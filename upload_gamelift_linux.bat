@@ -1,0 +1,1 @@
+aws gamelift upload-build --operating-system AMAZON_LINUX --build-root .\build_server_linux --name "MLAPI Test" --build-version "build 2" --region ap-northeast-1 --profile deploy

@@ -20,6 +20,7 @@ namespace UTJ.MLAPISample
         private MLAPI.Transports.Tasks.SocketTasks socketTasks;
         private ConnectInfo cachedConnectInfo;
 
+        public GameLift gameLift;
 
         public void SetSocketTasks(MLAPI.Transports.Tasks.SocketTasks tasks)
         {
@@ -35,6 +36,9 @@ namespace UTJ.MLAPISample
             MLAPI.NetworkingManager.Singleton.OnClientConnectedCallback += this.OnClientConnect;
             // クライアントが切断された時のコールバック設定
             MLAPI.NetworkingManager.Singleton.OnClientDisconnectCallback += this.OnClientDisconnect;
+
+            //クライアントの接続を承認する？
+            NetworkingManager.Singleton.ConnectionApprovalCallback += ApprovalCheck;
 
             if (connectInfo.useRelay)
             {
@@ -75,10 +79,49 @@ namespace UTJ.MLAPISample
             MLAPI.NetworkingManager.Singleton.OnClientConnectedCallback -= this.OnClientConnect;
             // クライアントが切断された時のコールバック設定
             MLAPI.NetworkingManager.Singleton.OnClientDisconnectCallback -= this.OnClientDisconnect;
+            NetworkingManager.Singleton.ConnectionApprovalCallback -= ApprovalCheck;
             if (this.cachedConnectInfo.useRelay)
             {
                 MLAPI.Transports.UNET.RelayTransport.OnRemoteEndpointReported -= OnRelayEndPointReported;
             }
+        }
+
+        //クライアントの接続を承認する？
+        private void ApprovalCheck(byte[] connectionData, ulong clientId, MLAPI.NetworkingManager.ConnectionApprovedDelegate callback)
+        {
+            Debug.Log("ApprovalCheck connectionData:" + System.Text.Encoding.ASCII.GetString(connectionData));
+            //Your logic here
+            // ここにあなたの論理
+            bool approve = true;
+            //bool createPlayerObject = true;
+
+
+#if SERVER
+            if (gameLift == null)
+            {
+                Debug.Log("GameLift object is null!");
+            }
+            else
+            {
+                //GameLiftにプレイヤーセッションを問い合わせる
+                approve = gameLift.ConnectPlayer((int)clientId, System.Text.Encoding.ASCII.GetString(connectionData));
+                if (!approve) { DisconnectPlayer(clientId); }
+            }
+#endif
+
+
+            // The prefab hash. Use null to use the default player prefab
+            // プレハブハッシュ。デフォルトのプレーヤープレハブを使用するには、nullを使用します
+            // If using this hash, replace "MyPrefabHashGenerator" with the name of a prefab added to the NetworkedPrefabs field of your NetworkingManager object in the scene
+            // このハッシュを使用する場合は、「MyPrefabHashGenerator」を、シーン内のNetworkingManagerオブジェ
+            // クトのNetworkedPrefabsフィールドに追加されたプレハブの名前に置き換えます。
+            //ulong? prefabHash = SpawnManager.GetPrefabHashFromGenerator("MyPrefabHashGenerator");
+
+            //If approve is true, the connection gets added. If it's false. The client gets disconnected
+            // 承認がtrueの場合、接続が追加されます。それが間違っている場合。クライアントが切断さ
+            // れます
+            //callback(createPlayerObject, prefabHash, approve, positionToSpawnAt, rotationToSpawnWith);
+            callback(false, null, approve, null, null);
         }
 
         // クライアントが接続してきたときの処理
@@ -93,7 +136,15 @@ namespace UTJ.MLAPISample
         private void OnClientDisconnect(ulong clientId)
         {
             Debug.Log("Disconnect Client " + clientId);
+            DisconnectPlayer(clientId);
+        }
 
+        //GameLiftからプレイヤーセッションを削除
+        private void DisconnectPlayer(ulong clientId)
+        {
+#if SERVER
+            gameLift.DisconnectPlayer((int)clientId);   //プレイヤーセッションを解放
+#endif
         }
 
         // サーバー開始時の処理
@@ -117,6 +168,16 @@ namespace UTJ.MLAPISample
         private void OnClickDisconnectButton()
         {
             MLAPI.NetworkingManager.Singleton.StopHost();
+
+#if SERVER
+            //GameLiftのゲームセッションを削除
+            if (gameLift != null && gameLift.gameliftStatus)
+            {
+                Debug.Log("TerminateGameSession");
+                gameLift.TerminateGameSession(true);
+            }
+#endif
+
             this.RemoveCallBack();
 
             this.configureObject.SetActive(true);

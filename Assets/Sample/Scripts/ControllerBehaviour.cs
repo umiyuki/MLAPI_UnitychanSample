@@ -265,7 +265,7 @@ namespace UTJ.MLAPISample
             if (dummyInputVoiceTimer < 0.0f)
             {
                 dummyInputVoiceTimer = UnityEngine.Random.Range(5.0f, 20.0f);
-                this.OnClickBtn(UnityEngine.Random.Range(0, 4));
+                //this.OnClickBtn(UnityEngine.Random.Range(0, 4));
             }
             dummyInputVoiceTimer -= Time.deltaTime;
         }

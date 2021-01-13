@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using System.Net;
 
 namespace UTJ.MLAPISample
 {
@@ -44,6 +45,14 @@ namespace UTJ.MLAPISample
         // ローカルのIPアドレス
         private string localIPAddr;
 
+        //サーバービルド時のポート
+        public int serverPort = 1935;
+
+        // GameLift接続ボタン
+        public Button connectGameLiftButton;
+
+        public GameLift gameLift;
+
         // 接続時
         void Awake()
         {
@@ -52,7 +61,12 @@ namespace UTJ.MLAPISample
             Application.targetFrameRate = 60;
 
 
-            localIPAddr = NetworkUtility.GetLocalIP();
+#if CLIENT || SERVER
+            localIPAddr = "HostName: " + Dns.GetHostName();            
+#else
+            localIPAddr = NetworkUtility.GetLocalIP(); //GameLift環境では動作しない
+#endif
+
             this.localIpInfoText.text = "あなたのIPアドレスは、" + localIPAddr;
 
             this.connectInfo = ConnectInfo.LoadFromFile();
@@ -61,6 +75,7 @@ namespace UTJ.MLAPISample
             this.resetButton.onClick.AddListener(OnClickReset);
             this.hostButton.onClick.AddListener(OnClickHost);
             this.clientButton.onClick.AddListener(OnClickClient);
+            connectGameLiftButton.onClick.AddListener(OnClickGameLiftConnect);
         }
 
         // 
@@ -69,6 +84,7 @@ namespace UTJ.MLAPISample
             // サーバービルド時
 #if UNITY_SERVER
             Debug.Log("Server Build.");
+            this.connectInfo.port = serverPort;
             ApplyConnectInfoToNetworkManager();
             this.serverManager.Setup(this.connectInfo, localIPAddr);
             // あと余計なものをHeadless消します
@@ -82,7 +98,8 @@ namespace UTJ.MLAPISample
             {
                 // バッチモードでは余計なシステム消します
                 NetworkUtility.RemoveUpdateSystemForBatchBuild();
-                OnClickClient();
+                //OnClickClient();
+                OnClickGameLiftConnect();
             }
 #endif
         }
@@ -124,6 +141,42 @@ namespace UTJ.MLAPISample
         {
             this.connectInfo = ConnectInfo.GetDefault();
             ApplyConnectInfoToUI();
+        }
+
+        public void OnClickGameLiftConnect()
+        {
+#if CLIENT
+            // try to connect to gamelift
+            //ローカルサーバが無ければGameLiftに接続する
+            if (gameLift.client!=null)
+            {
+                string ip = null;
+                int port = -1;
+                string auth = null;
+                gameLift.GetConnectionInfo(ref ip, ref port, ref auth); // sets GameliftStatus
+
+                if (gameLift.gameliftStatus)// TryConnect(ip, port, auth); //GameLiftからip、ポート、認証をゲットしたので接続
+                {
+                    Debug.Log("GameLiftからIP取得！ ip:" + ip + " port:" + port + " auth:" + auth);
+                    this.connectInfo.useRelay = false;
+                    this.connectInfo.ipAddr = ip;
+                    this.connectInfo.port = port;
+                    this.connectInfo.playerName = this.playerNameInputFiled.text;
+
+                    ApplyConnectInfoToNetworkManager();
+
+                    MLAPI.NetworkingManager.Singleton.NetworkConfig.ConnectionData = System.Text.Encoding.ASCII.GetBytes(auth); //セッションＩＤをカスタムデータとして送信
+
+                    // ClientManagerでMLAPIのコールバック等を設定
+                    this.clientManager.Setup();
+                    // MLAPIでクライアントとして起動
+                    var tasks = MLAPI.NetworkingManager.Singleton.StartClient();
+                    this.clientManager.SetSocketTasks(tasks);
+                }
+            }
+#elif !GAMELIFT
+            Debug.Log("GAMELIFTのプリプロセッサ定義がありません");
+#endif
         }
 
         // ロードした接続設定をUIに反映させます
